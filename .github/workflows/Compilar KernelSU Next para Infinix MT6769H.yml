@@ -25,14 +25,14 @@ jobs:
 
       - name: Descargar Código Fuente de MediaTek
         run: |
-          git clone --depth=1 https://github.com kernel-source
+          git clone --depth=1 https://github.com/MediaTek-Labs/common-kernel-4.19 kernel-source
           cd kernel-source
           echo "BASE_DIR=$(pwd)" >> $GITHUB_ENV
 
       - name: Inyectar KernelSU-Next (Rama Legacy para Kernel 4.19)
         run: |
           cd kernel-source
-          curl -LSs "https://githubusercontent.com" | bash -s legacy
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
       - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
         run: |
