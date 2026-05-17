@@ -32,16 +32,22 @@ jobs:
       - name: Configurar Flags y Generar .config
         run: |
           cd kernel-source
+          
+          # 1. Definimos la arquitectura globalmente para este bloque
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
-          # Activamos Kprobes desde el inicio
+          # 2. Activamos Kprobes desde el inicio
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
           
-          make O=out CC=clang k64_defconfig
-          make O=out CC=clang ARCH=arm64 olddefconfig
+          # 3. Generamos la configuración especificando la arquitectura ARM64
+          make O=out ARCH=arm64 CC=clang k64_defconfig
+          make O=out ARCH=arm64 CC=clang olddefconfig
 
       - name: Pre-compilar SELinux (El Antídoto de flask.h)
         run: |
