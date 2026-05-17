@@ -62,22 +62,26 @@ jobs:
           echo "ccflags-y += -I\$(objtree)/security/selinux/include" >> drivers/kernelsu/Kbuild
           echo "ccflags-y += -Isecurity/selinux/include" >> drivers/kernelsu/Kbuild
 
-      - name: Compilar el Kernel
+      - name: Compilar el Kernel (Con Pre-Build de SELinux)
         run: |
           cd kernel-source
           export ARCH=arm64
           export SUBARCH=arm64
-          
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
 
-          # 1. Generar la configuración apuntando a la carpeta de salida 'out'
+          # 1. Configuración inicial
           make O=out CC=clang k64_defconfig
-          
-          # 2. Silenciar las preguntas interactivas
           make O=out CC=clang ARCH=arm64 olddefconfig
-          
-          # 3. Compilar silenciando el error estricto de punteros a enum y auto-respondiendo
+
+          # 2. EL TRUCO: Forzar la generación de headers de SELinux primero
+          # Compilamos específicamente los sub-objetivos de seguridad antes del resto del kernel
+          make O=out ARCH=arm64 CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            security/selinux/
+            
+          # 3. Compilación Principal
           yes "" | make -j$(nproc) O=out \
             CC=clang \
             LD=ld.lld \
