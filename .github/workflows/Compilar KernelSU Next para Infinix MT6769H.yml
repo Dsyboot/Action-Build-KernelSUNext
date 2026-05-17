@@ -62,7 +62,7 @@ jobs:
           echo "ccflags-y += -I\$(objtree)/security/selinux/include" >> drivers/kernelsu/Kbuild
           echo "ccflags-y += -Isecurity/selinux/include" >> drivers/kernelsu/Kbuild
 
-      - name: Compilar el Kernel (Con Pre-Build de SELinux)
+      - name: Compilar el Kernel (Bypass Extremo de SELinux)
         run: |
           cd kernel-source
           export ARCH=arm64
@@ -74,14 +74,19 @@ jobs:
           make O=out CC=clang k64_defconfig
           make O=out CC=clang ARCH=arm64 olddefconfig
 
-          # 2. EL TRUCO: Forzar la generación de headers de SELinux primero
-          # Compilamos específicamente los sub-objetivos de seguridad antes del resto del kernel
-          make O=out ARCH=arm64 CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            security/selinux/
-            
-          # 3. Compilación Principal
+          # 2. Preparar el terreno y generar scripts base
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- prepare
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- scripts
+          
+          # 3. Forzar la generación de las políticas de seguridad (ignorar errores aquí)
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- security/selinux/ || true
+          
+          # 4. EL PUENTE DE FUERZA BRUTA: Buscar los headers generados y copiarlos al código fuente
+          echo "Buscando e inyectando flask.h y av_permissions.h..."
+          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
+          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
+
+          # 5. Compilación Principal
           yes "" | make -j$(nproc) O=out \
             CC=clang \
             LD=ld.lld \
