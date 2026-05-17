@@ -56,10 +56,9 @@ jobs:
           # 1. Generar la configuración apuntando a la carpeta de salida 'out'
           make O=out CC=clang k64_defconfig
           
-          # 2. Compilar utilizando las herramientas heredadas y el ensamblador correcto
+          # 2. El Truco Maestro: Desactivar el ensamblador integrado para sortear los errores de VDSO
           make -j$(nproc) O=out \
             CC=clang \
-            AS=clang \
             LD=ld.lld \
             AR=llvm-ar \
             NM=llvm-nm \
@@ -68,8 +67,8 @@ jobs:
             STRIP=llvm-strip \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-fintegrated-as" \
-            KAFLAGS="-fintegrated-as"
+            KCFLAGS="-no-integrated-as" \
+            KAFLAGS="-no-integrated-as"
 
       - name: Cargar Archivo Compilado (Kernel Image)
         uses: actions/upload-artifact@v4
