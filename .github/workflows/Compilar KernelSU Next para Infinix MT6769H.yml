@@ -32,11 +32,9 @@ jobs:
         run: |
           cd kernel-source
           
-          # 1. Silenciar la alarma de seguridad de MediaTek en classmap.h
+          # 1. Cirugía láser: Solo eliminamos la línea del error, conservando la estructura del archivo
           echo "Amordazando la validación estricta de capacidades en classmap.h..."
           sed -i '/#error New capability defined/d' security/selinux/include/classmap.h
-          sed -i '/#if CAP_LAST_CAP > CAP_AUDIT_READ/d' security/selinux/include/classmap.h
-          sed -i '/^#endif/d' security/selinux/include/classmap.h || true
 
           echo "Compilando el motor generador de SELinux..."
           # 2. Usamos GCC normal para compilar la herramienta
