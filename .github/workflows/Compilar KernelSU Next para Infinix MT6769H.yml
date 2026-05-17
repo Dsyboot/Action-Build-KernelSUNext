@@ -1,0 +1,55 @@
+name: Compilar KernelSU Next para Infinix MT6769H
+on:
+  workflow_dispatch: # Permite activar la compilación manualmente con un botón
+
+jobs:
+  build_kernel:
+    name: Compilando Kernel 4.19 con KernelSU-Next
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Configurar Entorno de Compilación
+        run: |
+          sudo apt update
+          sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache clang lld
+
+      - name: Descargar Código Fuente de MediaTek
+        run: |
+          git clone --depth=1 https://github.com kernel-source
+          cd kernel-source
+          echo "BASE_DIR=$(pwd)" >> $GITHUB_ENV
+
+      - name: Inyectar KernelSU-Next (Rama Legacy para Kernel 4.19)
+        run: |
+          cd kernel-source
+          curl -LSs "https://githubusercontent.com" | bash -s legacy
+
+      - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
+        run: |
+          cd kernel-source
+          # Reemplaza 'k64_defconfig' por la configuración base de MediaTek
+          CONFIG_FILE="arch/arm64/configs/k64_defconfig"
+          
+          echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
+          echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
+          echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
+          echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
+
+      - name: Compilar el Kernel
+        run: |
+          cd kernel-source
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          
+          # 1. Generar la configuración .config basada en la plantilla
+          make k64_defconfig
+          
+          # 2. Compilar utilizando los procesadores de la nube de GitHub
+          make -j$(nproc) O=out
+
+      - name: Cargar Archivo Compilado (Kernel Image)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel_Infinix_KSU_Next
+          path: kernel-source/out/arch/arm64/boot/Image
