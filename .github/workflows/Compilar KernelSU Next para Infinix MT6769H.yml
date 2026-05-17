@@ -56,7 +56,10 @@ jobs:
           # 1. Generar la configuración apuntando a la carpeta de salida 'out'
           make O=out CC=clang k64_defconfig
           
-          # 2. El Truco Maestro: Desactivar el ensamblador integrado para sortear los errores de VDSO
+          # 2. Silenciar las preguntas interactivas aceptando los valores por defecto
+          make O=out CC=clang ARCH=arm64 olddefconfig
+          
+          # 3. Compilar utilizando las herramientas heredadas y el ensamblador de GNU
           make -j$(nproc) O=out \
             CC=clang \
             LD=ld.lld \
