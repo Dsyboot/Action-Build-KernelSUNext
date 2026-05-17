@@ -13,7 +13,7 @@ jobs:
           sudo apt update
           sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache gcc-aarch64-linux-gnu clang-11 lld-11
           
-          # Enlaces simbólicos para forzar herramientas heredadas
+          # Forzamos herramientas heredadas
           sudo ln -sf /usr/bin/clang-11 /usr/bin/clang
           sudo ln -sf /usr/bin/ld.lld-11 /usr/bin/ld.lld
           sudo ln -sf /usr/bin/llvm-ar-11 /usr/bin/llvm-ar
@@ -28,6 +28,20 @@ jobs:
           cd kernel-source
           echo "BASE_DIR=$(pwd)" >> $GITHUB_ENV
 
+      - name: Generar Headers de SELinux Manualmente (La Bala de Plata)
+        run: |
+          cd kernel-source
+          echo "Compilando el motor generador de SELinux..."
+          # Usamos GCC normal de la máquina para compilar la herramienta interna
+          gcc -I security/selinux/include scripts/selinux/genheaders/genheaders.c -o genheaders_tool
+          
+          echo "Fabricando flask.h a la fuerza..."
+          # Ejecutamos la herramienta obligándola a escupir los archivos en la ruta exacta
+          ./genheaders_tool security/selinux/include/flask.h security/selinux/include/av_permissions.h
+          
+          echo "Verificando que los archivos existan antes de compilar KernelSU:"
+          ls -la security/selinux/include/flask.h
+
       - name: Configurar Flags y Generar .config
         run: |
           cd kernel-source
@@ -35,12 +49,10 @@ jobs:
           export SUBARCH=arm64
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
-          # Motor Kprobes y SELinux obligatorio
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
-          echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
           
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
@@ -49,44 +61,19 @@ jobs:
         run: |
           cd kernel-source
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          
+          # Domamos el Kbuild de KernelSU
           sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
+          # Le recordamos explícitamente dónde buscar (aunque ya lo pusimos físicamente ahí)
+          echo "ccflags-y += -I$(pwd)/security/selinux/include" >> drivers/kernelsu/Kbuild
 
-      - name: Compilación Fase 1 (Keep-Going para forzar SELinux)
+      - name: Compilación Principal del Kernel
         run: |
           cd kernel-source
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
-          # La bandera -k obligará a Make a generar flask.h aunque KernelSU falle.
-          yes "" | make -k -j$(nproc) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast" \
-            KAFLAGS="-no-integrated-as" || true
-
-      - name: Rescate e Inyección del Header
-        run: |
-          cd kernel-source
-          echo "Buscando headers generados en la Fase 1..."
-          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
-          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
-
-      - name: Compilación Fase 2 (Ensamblaje Final)
-        run: |
-          cd kernel-source
-          export HOSTCFLAGS="-fcommon"
-          export HOSTCXXFLAGS="-fcommon"
-          
-          # Ahora KernelSU encontrará el archivo y la compilación terminará limpiamente
           yes "" | make -j$(nproc) O=out \
             ARCH=arm64 \
             CC=clang \
