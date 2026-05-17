@@ -34,6 +34,21 @@ jobs:
           cd kernel-source
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
+      - name: Inyectar Hooks Manuales para KernelSU (Legacy Patch)
+        run: |
+          cd kernel-source
+          
+          # Descargar el parche oficial para kernels antiguos
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/patch/kernelsu_legacy.patch" -o ksu_legacy.patch
+          
+          # Aplicar el parche a tu código fuente de MediaTek
+          git apply ksu_legacy.patch || patch -p1 < ksu_legacy.patch
+          
+          # Verificar si el archivo Kbuild sigue exigiendo hooks manuales
+          # Si falla, forzaremos la directiva MANUAL_HOOK para sortear el error de Kbuild
+          sed -i 's/ccflags-y += -DKSU_HOOK_MANUAL/#ccflags-y += -DKSU_HOOK_MANUAL/g' drivers/kernelsu/Kbuild
+          echo "ccflags-y += -DKSU_MANUAL_HOOK" >> drivers/kernelsu/Kbuild
+      
       - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
         run: |
           cd kernel-source
