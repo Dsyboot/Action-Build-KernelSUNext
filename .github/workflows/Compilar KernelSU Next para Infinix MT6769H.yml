@@ -54,7 +54,6 @@ jobs:
           export SUBARCH=arm64
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
-          # Motor Kprobes
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
@@ -64,6 +63,8 @@ jobs:
           echo "CONFIG_SECURITY=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_NETWORK=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
+          # El tamaño de la tabla hash que exige SELinux
+          echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9" >> $CONFIG_FILE
           
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
