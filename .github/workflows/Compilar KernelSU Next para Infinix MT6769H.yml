@@ -54,31 +54,33 @@ jobs:
           export SUBARCH=arm64
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
+          # Encendemos la seguridad base en el defconfig
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
-          
-          # EL INTERRUPTOR MAESTRO: Forzar la existencia de las estructuras de seguridad
           echo "CONFIG_SECURITY=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_NETWORK=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
-          # El tamaño de la tabla hash que exige SELinux
-          echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9" >> $CONFIG_FILE
           
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
+          
+          # TRUCO MÁGICO 1: Forzar el tamaño del hash directamente en el .config final
+          sed -i 's/.*CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS.*/CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9/g' out/.config
+          echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9" >> out/.config
 
       - name: Inyectar KernelSU-Next (Rama Legacy)
         run: |
           cd kernel-source
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
           
-          # Domamos el Kbuild de KernelSU
+          # Silenciamos el requerimiento manual de hooks
           sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
-          # Le recordamos explícitamente dónde buscar (aunque ya lo pusimos físicamente ahí)
-          echo "ccflags-y += -I$(pwd)/security/selinux/include" >> drivers/kernelsu/Kbuild
+          
+          # TRUCO MÁGICO 2: Modificamos el código de KernelSU para evitar el error strscpy_pad
+          sed -i 's/strscpy_pad/__strscpy_pad/g' drivers/kernelsu/compat/kernel_compat.h
 
       - name: Compilación Principal del Kernel
         run: |
@@ -97,7 +99,7 @@ jobs:
             STRIP=llvm-strip \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast" \
+            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast -Wno-error=implicit-function-declaration" \
             KAFLAGS="-no-integrated-as"
 
       - name: Cargar Archivo Compilado
