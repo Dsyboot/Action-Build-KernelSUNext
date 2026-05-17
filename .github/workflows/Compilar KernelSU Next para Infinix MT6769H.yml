@@ -11,10 +11,9 @@ jobs:
       - name: Configurar Entorno de Compilación
         run: |
           sudo apt update
-          # Forzamos la instalación de herramientas heredadas
           sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache gcc-aarch64-linux-gnu clang-11 lld-11
           
-          # Enlaces simbólicos para Clang 11
+          # Enlaces simbólicos para forzar herramientas heredadas
           sudo ln -sf /usr/bin/clang-11 /usr/bin/clang
           sudo ln -sf /usr/bin/ld.lld-11 /usr/bin/ld.lld
           sudo ln -sf /usr/bin/llvm-ar-11 /usr/bin/llvm-ar
@@ -32,49 +31,62 @@ jobs:
       - name: Configurar Flags y Generar .config
         run: |
           cd kernel-source
-          
-          # 1. Definimos la arquitectura globalmente para este bloque
           export ARCH=arm64
           export SUBARCH=arm64
-          
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
-          # 2. Activamos Kprobes desde el inicio
+          # Motor Kprobes y SELinux obligatorio
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
+          echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
           
-          # 3. Generamos la configuración especificando la arquitectura ARM64
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
-
-      - name: Pre-compilar SELinux (El Antídoto de flask.h)
-        run: |
-          cd kernel-source
-          # 1. Compilamos SOLO la carpeta de seguridad sin KernelSU presente
-          make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- security/ || true
-          
-          # 2. Ahora que flask.h ya nació con seguridad, lo clonamos al código fuente
-          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
-          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
 
       - name: Inyectar KernelSU-Next (Rama Legacy)
         run: |
           cd kernel-source
-          # Descargamos el módulo una vez que el terreno está asegurado
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-          
-          # Configuramos Kbuild para usar Kprobes y callarse
           sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
 
-      - name: Compilación Principal del Kernel
+      - name: Compilación Fase 1 (Keep-Going para forzar SELinux)
         run: |
           cd kernel-source
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
+          # La bandera -k obligará a Make a generar flask.h aunque KernelSU falle.
+          yes "" | make -k -j$(nproc) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast" \
+            KAFLAGS="-no-integrated-as" || true
+
+      - name: Rescate e Inyección del Header
+        run: |
+          cd kernel-source
+          echo "Buscando headers generados en la Fase 1..."
+          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
+          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
+
+      - name: Compilación Fase 2 (Ensamblaje Final)
+        run: |
+          cd kernel-source
+          export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
+          
+          # Ahora KernelSU encontrará el archivo y la compilación terminará limpiamente
           yes "" | make -j$(nproc) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -89,7 +101,7 @@ jobs:
             KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast" \
             KAFLAGS="-no-integrated-as"
 
-      - name: Cargar Archivo Compilado (Kernel Image)
+      - name: Cargar Archivo Compilado
         uses: actions/upload-artifact@v4
         with:
           name: Kernel_Infinix_KSU_Next
