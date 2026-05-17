@@ -54,19 +54,25 @@ jobs:
           export SUBARCH=arm64
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
-          # Encendemos la seguridad base en el defconfig
+          # Motor Kprobes
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
+          
+          # Seguridad y SELinux
           echo "CONFIG_SECURITY=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_NETWORK=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
           
+          # NUEVO: Encendemos SECCOMP para que KernelSU pueda ocultar el Root
+          echo "CONFIG_SECCOMP=y" >> $CONFIG_FILE
+          echo "CONFIG_SECCOMP_FILTER=y" >> $CONFIG_FILE
+          
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
           
-          # TRUCO MÁGICO 1: Forzar el tamaño del hash directamente en el .config final
+          # Forzar tamaño del hash de SELinux
           sed -i 's/.*CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS.*/CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9/g' out/.config
           echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9" >> out/.config
 
