@@ -62,7 +62,7 @@ jobs:
           echo "ccflags-y += -I\$(objtree)/security/selinux/include" >> drivers/kernelsu/Kbuild
           echo "ccflags-y += -Isecurity/selinux/include" >> drivers/kernelsu/Kbuild
 
-      - name: Compilar el Kernel (Bypass Extremo de SELinux)
+      - name: Compilar el Kernel (Inyección Global de SELinux)
         run: |
           cd kernel-source
           export ARCH=arm64
@@ -74,19 +74,24 @@ jobs:
           make O=out CC=clang k64_defconfig
           make O=out CC=clang ARCH=arm64 olddefconfig
 
-          # 2. Preparar el terreno y generar scripts base
+          # 2. Forzar la generación de headers de seguridad
           make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- prepare
           make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- scripts
-          
-          # 3. Forzar la generación de las políticas de seguridad (ignorar errores aquí)
           make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- security/selinux/ || true
           
-          # 4. EL PUENTE DE FUERZA BRUTA: Buscar los headers generados y copiarlos al código fuente
-          echo "Buscando e inyectando flask.h y av_permissions.h..."
-          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
-          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
-
-          # 5. Compilación Principal
+          # 3. EL PUENTE GLOBAL: Encontrar flask.h y crear un directorio de inclusión central
+          mkdir -p global_selinux_includes
+          find out/ -name "flask.h" -exec cp {} global_selinux_includes/ \;
+          find out/ -name "av_permissions.h" -exec cp {} global_selinux_includes/ \;
+          
+          # Copiamos flask.h también a la carpeta raíz de KSU por si el módulo es ciego
+          find out/ -name "flask.h" -exec cp {} drivers/kernelsu/ \;
+          
+          # 4. Modificar Kbuild para aceptar Kprobes
+          sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
+          echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
+          
+          # 5. Compilación Principal (Con bandera -I apuntando a nuestra carpeta global)
           yes "" | make -j$(nproc) O=out \
             CC=clang \
             LD=ld.lld \
@@ -97,7 +102,7 @@ jobs:
             STRIP=llvm-strip \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast" \
+            KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast -I$(pwd)/global_selinux_includes -I$(pwd)/security/selinux/include" \
             KAFLAGS="-no-integrated-as"
 
       - name: Cargar Archivo Compilado (Kernel Image)
