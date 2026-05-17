@@ -41,28 +41,27 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Forzamos las banderas para usar las herramientas LLVM correctas
-          export CC=clang
-          export LD=ld.lld
-          export AR=llvm-ar
-          export NM=llvm-nm
-          export OBJCOPY=llvm-objcopy
-          export OBJDUMP=llvm-objdump
-          export STRIP=llvm-strip
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          # Solución al error -EL: Obligar a Clang a usar el ensamblador integrado de LLVM
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          
-          # Solución al error 'multiple definition of yylloc': Forzar compatibilidad heredada
+          # Solución al error 'multiple definition of yylloc'
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
 
           # 1. Generar la configuración apuntando a la carpeta de salida 'out'
-          make O=out k64_defconfig
+          make O=out CC=clang k64_defconfig
           
-          # 2. Compilar especificando el uso de Clang y el ensamblador integrado
-          make -j$(nproc) O=out CC=clang LLVM=1 LLVM_IAS=1
+          # 2. Compilar forzando de forma explícita el uso de Clang en cada componente interno
+          make -j$(nproc) O=out \
+            CC=clang \
+            AS=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            KCFLAGS="-fintegrated-as" \
+            KAFLAGS="-fintegrated-as"
 
       - name: Cargar Archivo Compilado (Kernel Image)
         uses: actions/upload-artifact@v4
