@@ -11,10 +11,10 @@ jobs:
       - name: Configurar Entorno de Compilación
         run: |
           sudo apt update
-          # Forzamos la instalación de Clang 11 y LLD 11 para total compatibilidad con Kernel 4.19
+          # Forzamos la instalación de herramientas heredadas
           sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache gcc-aarch64-linux-gnu clang-11 lld-11
           
-          # Creamos enlaces simbólicos para que los comandos genéricos 'clang' y 'ld.lld' apunten a la versión 11
+          # Enlaces simbólicos para Clang 11
           sudo ln -sf /usr/bin/clang-11 /usr/bin/clang
           sudo ln -sf /usr/bin/ld.lld-11 /usr/bin/ld.lld
           sudo ln -sf /usr/bin/llvm-ar-11 /usr/bin/llvm-ar
@@ -29,80 +29,48 @@ jobs:
           cd kernel-source
           echo "BASE_DIR=$(pwd)" >> $GITHUB_ENV
 
-      - name: Inyectar KernelSU-Next (Rama Legacy para Kernel 4.19)
-        run: |
-          cd kernel-source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-
-      - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
+      - name: Configurar Flags y Generar .config
         run: |
           cd kernel-source
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
+          # Activamos Kprobes desde el inicio
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_FILE
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
-
-      - name: Forzar Kprobes y Guiar SELinux (Bypass Kbuild)
-        run: |
-          cd kernel-source
           
-          # 1. Borramos la línea exacta que lanza el error fatal en el Kbuild de KernelSU
-          sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
-          
-          # 2. Le decimos explícitamente a KernelSU que use el motor Kprobes
-          echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
-          
-          # 3. Silenciamos posibles advertencias de declaraciones implícitas
-          echo "ccflags-y += -Wno-error=implicit-function-declaration" >> drivers/kernelsu/Kbuild
-          
-          # 4. EL PARCHE MÁGICO: Le decimos a KernelSU dónde encontrar flask.h y los headers de SELinux
-          echo "ccflags-y += -I\$(srctree)/security/selinux/include" >> drivers/kernelsu/Kbuild
-          echo "ccflags-y += -I\$(objtree)/security/selinux/include" >> drivers/kernelsu/Kbuild
-          echo "ccflags-y += -Isecurity/selinux/include" >> drivers/kernelsu/Kbuild
-
-      - name: Compilar el Kernel (Inyección Directa de SELinux)
-        run: |
-          cd kernel-source
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export HOSTCFLAGS="-fcommon"
-          export HOSTCXXFLAGS="-fcommon"
-
-          # 1. Configuración inicial
           make O=out CC=clang k64_defconfig
           make O=out CC=clang ARCH=arm64 olddefconfig
 
-          # 2. Forzar la generación de headers de seguridad
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- prepare
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- scripts
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- security/selinux/ || true
+      - name: Pre-compilar SELinux (El Antídoto de flask.h)
+        run: |
+          cd kernel-source
+          # 1. Compilamos SOLO la carpeta de seguridad sin KernelSU presente
+          make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- security/ || true
           
-          # 3. EL TIRO DE GRACIA: Poner flask.h exactamente donde objsec.h lo exige
-          echo "Buscando e inyectando flask.h y av_permissions.h..."
+          # 2. Ahora que flask.h ya nació con seguridad, lo clonamos al código fuente
+          find out/ -name "flask.h" -exec cp {} security/selinux/include/ \;
+          find out/ -name "av_permissions.h" -exec cp {} security/selinux/include/ \;
+
+      - name: Inyectar KernelSU-Next (Rama Legacy)
+        run: |
+          cd kernel-source
+          # Descargamos el módulo una vez que el terreno está asegurado
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
           
-          FLASK_PATH=$(find out/ -name "flask.h" | head -n 1)
-          AV_PATH=$(find out/ -name "av_permissions.h" | head -n 1)
-          
-          if [ -n "$FLASK_PATH" ]; then
-            echo "¡flask.h encontrado! Clonando a security/selinux/include/"
-            cp "$FLASK_PATH" security/selinux/include/
-            cp "$FLASK_PATH" drivers/kernelsu/
-          else
-            echo "ADVERTENCIA: No se generó flask.h en el paso previo."
-          fi
-          
-          if [ -n "$AV_PATH" ]; then
-            cp "$AV_PATH" security/selinux/include/
-          fi
-          
-          # 4. Modificar Kbuild para aceptar Kprobes
+          # Configuramos Kbuild para usar Kprobes y callarse
           sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
+
+      - name: Compilación Principal del Kernel
+        run: |
+          cd kernel-source
+          export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
           
-          # 5. Compilación Principal
           yes "" | make -j$(nproc) O=out \
+            ARCH=arm64 \
             CC=clang \
             LD=ld.lld \
             AR=llvm-ar \
@@ -119,4 +87,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Kernel_Infinix_KSU_Next
-          path: kernel-source/out/arch/arm64/boot/Image
+          path: kernel-source/out/arch/arm64/boot/Image*
