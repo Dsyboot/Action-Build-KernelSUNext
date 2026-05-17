@@ -88,6 +88,8 @@ jobs:
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
+          # Inyectamos el valor de la tabla Hash directamente en las banderas C del núcleo
+          # Y agregamos -Wno-error=implicit-function-declaration al entorno KCFLAGS global
           yes "" | make -j$(nproc) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -100,7 +102,8 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             KCFLAGS="-no-integrated-as -Wno-error=void-pointer-to-enum-cast -Wno-error=implicit-function-declaration" \
-            KAFLAGS="-no-integrated-as"
+            KAFLAGS="-no-integrated-as" \
+            CFLAGS_KERNEL="-DCONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9"
 
       - name: Cargar Archivo Compilado
         uses: actions/upload-artifact@v4
