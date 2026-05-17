@@ -81,12 +81,14 @@ jobs:
           # Descargamos exactamente la etiqueta v0.9.5
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
           
-          # Domamos el Kbuild para que use Kprobes silenciosamente
-          sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
-          echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
+          # La v0.9.5 guarda el módulo en 'KernelSU', no en 'drivers/kernelsu'
+          sed -i '/No hooks were defined/d' KernelSU/kernel/Makefile
           
-          # Le recordamos la ruta de SELinux por si acaso
-          echo "ccflags-y += -I$(pwd)/security/selinux/include" >> drivers/kernelsu/Kbuild
+          # Forzamos a que use Kprobes silenciosamente
+          echo "ccflags-y += -DKSU_HOOK_KPROBES" >> KernelSU/kernel/Makefile
+          
+          # Le recordamos la ruta de SELinux
+          echo "ccflags-y += -I$(pwd)/security/selinux/include" >> KernelSU/kernel/Makefile
 
       - name: Compilación Principal del Kernel
         run: |
