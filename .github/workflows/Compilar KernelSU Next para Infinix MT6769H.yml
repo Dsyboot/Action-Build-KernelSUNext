@@ -11,19 +11,28 @@ jobs:
       - name: Configurar Entorno de Compilación
         run: |
           sudo apt update
-          # Agregamos 'gcc-aarch64-linux-gnu' para resolver el error 'not found'
-          sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache clang lld gcc-aarch64-linux-gnu
+          # Forzamos la instalación de Clang 11 y LLD 11 para total compatibilidad con Kernel 4.19
+          sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache gcc-aarch64-linux-gnu clang-11 lld-11
+          
+          # Creamos enlaces simbólicos para que los comandos genéricos 'clang' y 'ld.lld' apunten a la versión 11
+          sudo ln -sf /usr/bin/clang-11 /usr/bin/clang
+          sudo ln -sf /usr/bin/ld.lld-11 /usr/bin/ld.lld
+          sudo ln -sf /usr/bin/llvm-ar-11 /usr/bin/llvm-ar
+          sudo ln -sf /usr/bin/llvm-nm-11 /usr/bin/llvm-nm
+          sudo ln -sf /usr/bin/llvm-objcopy-11 /usr/bin/llvm-objcopy
+          sudo ln -sf /usr/bin/llvm-objdump-11 /usr/bin/llvm-objdump
+          sudo ln -sf /usr/bin/llvm-strip-11 /usr/bin/llvm-strip
 
       - name: Descargar Código Fuente de MediaTek
         run: |
-          git clone --depth=1 https://github.com/MediaTek-Labs/common-kernel-4.19 kernel-source
+          git clone --depth=1 https://github.com kernel-source
           cd kernel-source
           echo "BASE_DIR=$(pwd)" >> $GITHUB_ENV
 
       - name: Inyectar KernelSU-Next (Rama Legacy para Kernel 4.19)
         run: |
           cd kernel-source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          curl -LSs "https://githubusercontent.com" | bash -s legacy
 
       - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
         run: |
@@ -41,14 +50,13 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Solución al error 'multiple definition of yylloc'
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
 
           # 1. Generar la configuración apuntando a la carpeta de salida 'out'
           make O=out CC=clang k64_defconfig
           
-          # 2. Compilar forzando de forma explícita el uso de Clang en cada componente interno
+          # 2. Compilar utilizando las herramientas heredadas y el ensamblador correcto
           make -j$(nproc) O=out \
             CC=clang \
             AS=clang \
