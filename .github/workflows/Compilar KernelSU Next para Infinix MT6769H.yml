@@ -1,6 +1,6 @@
 name: Compilar KernelSU Next para Infinix MT6769H
 on:
-  workflow_dispatch: # Permite activar la compilación manualmente con un botón
+  workflow_dispatch:
 
 jobs:
   build_kernel:
@@ -11,7 +11,8 @@ jobs:
       - name: Configurar Entorno de Compilación
         run: |
           sudo apt update
-          sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache clang lld
+          # Agregamos 'gcc-aarch64-linux-gnu' para resolver el error 'not found'
+          sudo apt install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev xz-utils git-core ccache clang lld gcc-aarch64-linux-gnu
 
       - name: Descargar Código Fuente de MediaTek
         run: |
@@ -27,7 +28,6 @@ jobs:
       - name: Forzar Activación de Flags Críticas (CONFIG_KALLSYMS_ALL)
         run: |
           cd kernel-source
-          # Reemplaza 'k64_defconfig' por la configuración base de MediaTek
           CONFIG_FILE="arch/arm64/configs/k64_defconfig"
           
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_FILE
@@ -40,13 +40,21 @@ jobs:
           cd kernel-source
           export ARCH=arm64
           export SUBARCH=arm64
+          # Forzamos las banderas para usar Clang como compilador principal y LLD como enlazador
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export STRIP=llvm-strip
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # 1. Generar la configuración .config basada en la plantilla
-          make k64_defconfig
+          # 1. Generar la configuración apuntando a la carpeta de salida 'out'
+          make O=out k64_defconfig
           
-          # 2. Compilar utilizando los procesadores de la nube de GitHub
-          make -j$(nproc) O=out
+          # 2. Compilar especificando el uso de Clang
+          make -j$(nproc) O=out CC=clang
 
       - name: Cargar Archivo Compilado (Kernel Image)
         uses: actions/upload-artifact@v4
