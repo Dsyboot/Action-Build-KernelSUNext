@@ -4,7 +4,7 @@ on:
 
 jobs:
   build_kernel:
-    name: Compilando Kernel 4.19 con KernelSU-Next
+    name: Compilando Kernel 4.19 con KernelSU
     runs-on: ubuntu-22.04
 
     steps:
@@ -60,33 +60,33 @@ jobs:
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
           
-          # Seguridad y SELinux
+          # Interruptores Maestros de Seguridad y SECCOMP
           echo "CONFIG_SECURITY=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_NETWORK=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
-          
-          # NUEVO: Encendemos SECCOMP para que KernelSU pueda ocultar el Root
           echo "CONFIG_SECCOMP=y" >> $CONFIG_FILE
           echo "CONFIG_SECCOMP_FILTER=y" >> $CONFIG_FILE
           
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
           
-          # Forzar tamaño del hash de SELinux
+          # Forzar tamaño del hash de SELinux a 9
           sed -i 's/.*CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS.*/CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9/g' out/.config
           echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9" >> out/.config
 
-      - name: Inyectar KernelSU-Next (Rama Legacy)
+      - name: Inyectar KernelSU (Oficial v0.9.5 para no-GKI)
         run: |
           cd kernel-source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
           
-          # Silenciamos el requerimiento manual de hooks
+          # Descargamos exactamente la etiqueta v0.9.5
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          
+          # Domamos el Kbuild para que use Kprobes silenciosamente
           sed -i '/No hooks were defined/d' drivers/kernelsu/Kbuild
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
           
-          # TRUCO MÁGICO 2: Modificamos el código de KernelSU para evitar el error strscpy_pad
-          sed -i 's/strscpy_pad/__strscpy_pad/g' drivers/kernelsu/compat/kernel_compat.h
+          # Le recordamos la ruta de SELinux por si acaso
+          echo "ccflags-y += -I$(pwd)/security/selinux/include" >> drivers/kernelsu/Kbuild
 
       - name: Compilación Principal del Kernel
         run: |
