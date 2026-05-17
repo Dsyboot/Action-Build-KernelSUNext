@@ -44,7 +44,7 @@ jobs:
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
 
-      - name: Forzar Kprobes en KernelSU (Bypass Kbuild)
+      - name: Forzar Kprobes y Guiar SELinux (Bypass Kbuild)
         run: |
           cd kernel-source
           
@@ -54,8 +54,13 @@ jobs:
           # 2. Le decimos explícitamente a KernelSU que use el motor Kprobes
           echo "ccflags-y += -DKSU_HOOK_KPROBES" >> drivers/kernelsu/Kbuild
           
-          # 3. Silenciamos posibles advertencias de declaraciones implícitas que KSU pueda arrojar
+          # 3. Silenciamos posibles advertencias de declaraciones implícitas
           echo "ccflags-y += -Wno-error=implicit-function-declaration" >> drivers/kernelsu/Kbuild
+          
+          # 4. EL PARCHE MÁGICO: Le decimos a KernelSU dónde encontrar flask.h y los headers de SELinux
+          echo "ccflags-y += -I\$(srctree)/security/selinux/include" >> drivers/kernelsu/Kbuild
+          echo "ccflags-y += -I\$(objtree)/security/selinux/include" >> drivers/kernelsu/Kbuild
+          echo "ccflags-y += -Isecurity/selinux/include" >> drivers/kernelsu/Kbuild
 
       - name: Compilar el Kernel
         run: |
