@@ -60,12 +60,15 @@ jobs:
           echo "CONFIG_KPROBES=y" >> $CONFIG_FILE
           echo "CONFIG_HAVE_KPROBES=y" >> $CONFIG_FILE
           
-          # Interruptores Maestros de Seguridad y SECCOMP
+          # Interruptores Maestros de Seguridad, SELinux y SECCOMP
           echo "CONFIG_SECURITY=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_NETWORK=y" >> $CONFIG_FILE
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_FILE
           echo "CONFIG_SECCOMP=y" >> $CONFIG_FILE
           echo "CONFIG_SECCOMP_FILTER=y" >> $CONFIG_FILE
+          
+          # EL INTERRUPTOR MÁGICO: Encender KernelSU v0.9.5 en el defconfig
+          echo "CONFIG_KSU=y" >> $CONFIG_FILE
           
           make O=out ARCH=arm64 CC=clang k64_defconfig
           make O=out ARCH=arm64 CC=clang olddefconfig
